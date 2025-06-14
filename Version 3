@@ -1,0 +1,356 @@
+/*
+*Final Version 
+*/
+
+//System Libraries 
+#include <iostream>
+#include <string>
+#include <vector>
+#include <cstdlib>  // For rand()
+#include <ctime>    // For time()
+using namespace std;
+
+// Function prototypes 
+void welcomeMessage(); // Display a welcome message
+int getNumPlayers(); // Prompt user for number of players
+int getNumRounds(); // Prompt user for number of rounds
+void getPlayerNames(vector<string> &names, int numPlayers); // Get player names from user
+void initializeBalances(vector<int> &balances, int numPlayers, int initialBalance = 1000); // Set starting balances
+void dealInitialCards(const int numPlayers, vector<vector<string>> &playerCards,
+                      vector<vector<int>> &playerCardValues); // Deal two starting cards to each player
+void displayHand(const vector<string> &cards, const string &playerName, int total, bool hideSecondCard = false); // Show cards for player
+void displayHand(const vector<string> &cards, int playerIndex, int total); // Overloaded: Show cards using player index
+int chooseAceValue(const string &playerName); // Ask user to pick value for Ace (1 or 11)
+bool playerHits(const string &playerName); // Ask if player wants to hit
+void dealerTurn(vector<string> &dealerCards, vector<int> &dealerCardValues); // Handle dealer drawing cards
+int calculateTotal(const vector<int> &cardValues); // Calculate sum of all card values
+void placeBets(vector<int> &balances, vector<int> &bets, const vector<string> &names); // Get bets from each player
+void sortPlayersByBalance(vector<string> &names, vector<int> &balances); // Bubble sort players by balance
+int linearSearchPlayer(const vector<string> &names, const string &searchName); // Find player by name
+void exitGame(); // End the program gracefully
+
+// Draw a random card
+pair<string, int> drawCard(); // Returns card name and value
+
+//Code Begins
+int main() {
+    srand(time(0));  // Seed random number generator once
+
+    welcomeMessage(); // Greet player
+
+    int numPlayers = getNumPlayers(); // Ask for number of players
+    int numRounds = getNumRounds(); // Ask for number of rounds
+
+    // Create and initialize vectors
+    vector<string> playerNames(numPlayers);
+    vector<int> playerBalances(numPlayers);
+    vector<int> playerBets(numPlayers);
+
+    getPlayerNames(playerNames, numPlayers); // Input player names
+    initializeBalances(playerBalances, numPlayers); // Give all players default money
+
+    static int totalGamesPlayed = 0; // static variable example
+
+    // Main game loop: one iteration per round
+    for (int round = 1; round <= numRounds; ++round) {
+        cout << "\n=== Round " << round << " ===\n";
+
+        // Create 2D vectors to store each player's cards and values
+        vector<vector<string>> playerCards(numPlayers);
+        vector<vector<int>> playerCardValues(numPlayers);
+
+        vector<string> dealerCards; // Dealer cards
+        vector<int> dealerCardValues; // Dealer card values
+
+        placeBets(playerBalances, playerBets, playerNames); // Let players place their bets
+
+        dealInitialCards(numPlayers, playerCards, playerCardValues); // Deal 2 cards to each player
+
+        // Deal dealer's first visible card
+        pair<string, int> dealerCard = drawCard();
+        dealerCards.push_back(dealerCard.first);
+        dealerCardValues.push_back(dealerCard.second);
+        cout << "Dealer shows: " << dealerCards[0] << endl;
+
+        // Loop through each player
+        for (int i = 0; i < numPlayers; ++i) {
+            int total = 0;
+
+            // Check both initial cards for Ace and ask for value
+            for (int c = 0; c < (int)playerCards[i].size(); ++c) {
+                if (playerCards[i][c] == "Ace") {
+                    int aceValue = chooseAceValue(playerNames[i]);
+                    playerCardValues[i][c] = aceValue;
+                }
+            }
+
+            total = calculateTotal(playerCardValues[i]); // Get player's total score
+            displayHand(playerCards[i], playerNames[i], total); // Show player's hand
+
+            bool busted = false;
+            // Player's turn: keep hitting until they stand or bust
+            while (true) {
+                if (total > 21) {
+                    cout << playerNames[i] << " busted!\n";
+                    busted = true;
+                    break;
+                }
+                if (!playerHits(playerNames[i])) // Ask to hit or stand
+                    break;
+
+                // Draw a new card
+                pair<string, int> newCard = drawCard();
+                playerCards[i].push_back(newCard.first);
+                playerCardValues[i].push_back(newCard.second);
+
+                // If card is Ace, ask user for value
+                if (newCard.first == "Ace") {
+                    int aceValue = chooseAceValue(playerNames[i]);
+                    playerCardValues[i].back() = aceValue;
+                }
+
+                total = calculateTotal(playerCardValues[i]); // Update total
+                cout << playerNames[i] << " drew a " << newCard.first << ". New total: " << total << endl;
+            }
+
+            // If player didn't bust, show final total
+            if (!busted) {
+                cout << playerNames[i] << " stands with " << total << endl;
+            }
+        }
+
+        dealerTurn(dealerCards, dealerCardValues); // Dealer's automated turn
+
+        int dealerTotal = calculateTotal(dealerCardValues); // Final dealer score
+        cout << "Dealer total: " << dealerTotal << endl;
+
+        // Determine outcomes for each player
+        for (int i = 0; i < numPlayers; ++i) {
+            int playerTotal = calculateTotal(playerCardValues[i]);
+
+            if (playerTotal > 21) {
+                cout << playerNames[i] << " loses their bet of " << playerBets[i] << endl;
+                playerBalances[i] -= playerBets[i];
+            }
+            else if (dealerTotal > 21 || playerTotal > dealerTotal) {
+                cout << playerNames[i] << " wins and gains " << playerBets[i] << endl;
+                playerBalances[i] += playerBets[i];
+            }
+            else if (playerTotal == dealerTotal) {
+                cout << playerNames[i] << " pushes (tie), bet returned." << endl;
+            }
+            else {
+                cout << playerNames[i] << " loses their bet of " << playerBets[i] << endl;
+                playerBalances[i] -= playerBets[i];
+            }
+        }
+
+        totalGamesPlayed++; // Increment static game count
+
+        // Show updated balances
+        cout << "\nBalances after round " << round << ":\n";
+        for (int i = 0; i < numPlayers; ++i) {
+            cout << playerNames[i] << ": $" << playerBalances[i] << endl;
+        }
+
+        // Ask if players want to quit
+        cout << "Type 'q' to quit, any other key to continue: ";
+        string quitChoice;
+        getline(cin, quitChoice);
+        if (!quitChoice.empty() && (quitChoice[0] == 'q' || quitChoice[0] == 'Q')) {
+            exitGame(); // Exit if requested
+        }
+    }
+
+    // Sort players by ending balance
+    sortPlayersByBalance(playerNames, playerBalances);
+
+    // Display final leaderboard
+    cout << "\nFinal rankings:\n";
+    for (int i = 0; i < numPlayers; ++i) {
+        cout << i + 1 << ". " << playerNames[i] << " - $" << playerBalances[i] << endl;
+    }
+
+    return 0;
+}
+
+// Draw a random card and return its name and value
+pair<string, int> drawCard() {
+    int cardNum = rand() % 13 + 1;  // 1 to 13
+    switch(cardNum) {
+        case 1: return {"Ace", 11};   // Ace (default 11)
+        case 11: return {"Jack", 10};
+        case 12: return {"Queen", 10};
+        case 13: return {"King", 10};
+        default: return {to_string(cardNum), cardNum};  // 2-10
+    }
+}
+
+// Show welcome message
+void welcomeMessage() {
+    cout << "Welcome to Blackjack!\n";
+}
+
+// Ask for number of players
+int getNumPlayers() {
+    int num;
+    cout << "Enter number of players: ";
+    cin >> num;
+    cin.ignore(); // Clear newline
+    return num;
+}
+
+// Ask for number of rounds
+int getNumRounds() {
+    int rounds;
+    cout << "Enter number of rounds to play: ";
+    cin >> rounds;
+    cin.ignore();
+    return rounds;
+}
+
+// Get names of all players
+void getPlayerNames(vector<string> &names, int numPlayers) {
+    for (int i = 0; i < numPlayers; ++i) {
+        cout << "Enter name for player " << (i + 1) << ": ";
+        getline(cin, names[i]);
+    }
+}
+
+// Give all players starting balance
+void initializeBalances(vector<int> &balances, int numPlayers, int initialBalance) {
+    for (int i = 0; i < numPlayers; ++i) {
+        balances[i] = initialBalance;
+    }
+}
+
+// Deal 2 cards to each player
+void dealInitialCards(const int numPlayers, vector<vector<string>> &playerCards,
+                      vector<vector<int>> &playerCardValues) {
+    for (int i = 0; i < numPlayers; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            pair<string, int> card = drawCard();
+            playerCards[i].push_back(card.first);
+            playerCardValues[i].push_back(card.second);
+        }
+        cout << playerCards[i][0] << " and " << playerCards[i][1] << " dealt to player " << i + 1 << endl;
+    }
+}
+
+// Display player's hand, with optional hidden second card
+void displayHand(const vector<string> &cards, const string &playerName, int total, bool hideSecondCard) {
+    cout << playerName << "'s hand: ";
+    for (size_t i = 0; i < cards.size(); ++i) {
+        if (hideSecondCard && i == 1) {
+            cout << "[Second card hidden] ";
+        } else {
+            cout << cards[i] << " ";
+        }
+    }
+    cout << " Total: " << total << endl;
+}
+
+// Alternate display function using player index
+void displayHand(const vector<string> &cards, int playerIndex, int total) {
+    cout << "Player " << playerIndex + 1 << "'s hand: ";
+    for (const string &card : cards) {
+        cout << card << " ";
+    }
+    cout << " Total: " << total << endl;
+}
+
+// Ask user to choose Ace value
+int chooseAceValue(const string &playerName) {
+    int val;
+    cout << playerName << ", you have an Ace. Choose 1 or 11: ";
+    while (true) {
+        cin >> val;
+        if (val == 1 || val == 11) break;
+        cout << "Invalid choice. Please enter 1 or 11: ";
+    }
+    cin.ignore();
+    return val;
+}
+
+// Ask player if they want to hit or stand
+bool playerHits(const string &playerName) {
+    char choice;
+    cout << playerName << ", Hit or Stand? (h/s): ";
+    while (true) {
+        cin >> choice;
+        choice = tolower(choice);
+        if (choice == 'h') {
+            cin.ignore();
+            return true;
+        }
+        else if (choice == 's') {
+            cin.ignore();
+            return false;
+        }
+        cout << "Invalid input. Enter 'h' or 's': ";
+    }
+}
+
+// Dealer keeps hitting until total >= 17
+void dealerTurn(vector<string> &dealerCards, vector<int> &dealerCardValues) {
+    while (calculateTotal(dealerCardValues) < 17) {
+        pair<string, int> card = drawCard();
+        dealerCards.push_back(card.first);
+        dealerCardValues.push_back(card.second);
+        cout << "Dealer drew a " << card.first << ".\n";
+    }
+
+    int total = calculateTotal(dealerCardValues);
+    if (total > 21)
+        cout << "Dealer busted!\n";
+    else
+        cout << "Dealer stands with " << total << endl;
+}
+
+// Add up card values
+int calculateTotal(const vector<int> &cardValues) {
+    int sum = 0;
+    for (int val : cardValues) sum += val;
+    return sum;
+}
+
+// Ask players to place bets
+void placeBets(vector<int> &balances, vector<int> &bets, const vector<string> &names) {
+    for (size_t i = 0; i < names.size(); ++i) {
+        cout << names[i] << ", you have $" << balances[i] << ". Enter your bet: ";
+        int bet;
+        while (true) {
+            cin >> bet;
+            if (bet > 0 && bet <= balances[i]) break;
+            cout << "Invalid bet. Enter a positive amount up to your balance: ";
+        }
+        bets[i] = bet;
+        cin.ignore();
+    }
+}
+
+// Sort players by balance (descending) using bubble sort
+void sortPlayersByBalance(vector<string> &names, vector<int> &balances) {
+    for (size_t i = 0; i < balances.size(); ++i) {
+        for (size_t j = 0; j < balances.size() - 1; ++j) {
+            if (balances[j] < balances[j + 1]) {
+                swap(balances[j], balances[j + 1]);
+                swap(names[j], names[j + 1]);
+            }
+        }
+    }
+}
+
+// Search for a player name and return index
+int FSearchPlayer(const vector<string> &names, const string &searchName) {
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (names[i] == searchName) return (int)i;
+    }
+    return -1;
+}
+
+// Exit message and terminate program
+void exitGame() {
+    cout << "Thanks for playing! Goodbye.\n";
+    exit(0);
+}

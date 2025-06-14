@@ -1,0 +1,256 @@
+/*
+*Version 1-
+*/
+
+//System Libraries 
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <cmath>
+#include <vector>
+using namespace std;
+
+// Function Prototypes
+void drawInitialCards(int &card1, int &card2); // Draw two random cards for the player
+int getCardValue(int card, string cardPos); // Get the value of a card, allow player to choose Ace value
+void showCard(int card); // Display the name or number of a card
+void showInitialHand(int c1, int c2); // Display both initial cards drawn
+bool playerTurn(int &playerTotal); // (Unused in version 1) Handle player’s hit/stand choices
+int dealerTurn(); // (Unused in version 1) Handle dealer drawing cards
+string determineResult(int pTot, int dTot, bool pBust, bool dBust); // Decide winner of the round
+void printDealerCards(vector<int> dealer); // Show dealer’s full hand after round
+
+int main() {
+    srand(static_cast<unsigned int>(time(0))); // Seed random number generator
+
+    // Constants for Ace values, card values, and user input chars
+    const int MIN_ACE = 1;
+    const int MAX_ACE = 11;
+    const int FACE_CARD_VALUE = 10;
+    const char HIT = 'h';
+    const char STAND = 's';
+    const char PLAY_YES = 'y';
+    const char PLAY_NO = 'n';
+
+    // Game state variables
+    int rounds, wins = 0, total = 0;
+    char pAgain = PLAY_YES;
+    string name;
+    ofstream outFile("blackjack_results.txt"); // File to log results
+
+    // Welcome message and get user name
+    cout << "Welcome to Blackjack!" << endl;
+    cout << "Enter your name: ";
+    getline(cin, name);
+
+    // Loop to allow playing multiple games
+    while (pAgain == PLAY_YES) {
+        wins = 0;
+        total = 0;
+
+        // Ask user how many rounds to play (must be > 0)
+        do {
+            cout << "Enter number of rounds to play: ";
+            cin >> rounds;
+        } while (rounds <= 0);
+
+        // Main game loop for each round
+        for (int r = 0; r < rounds; r++) {
+            cout << "\n=== Round " << (r + 1) << " ===\n";
+            total++;
+
+            // Deal two cards to player
+            int p1, p2;
+            drawInitialCards(p1, p2);
+
+            // Display initial player cards
+            cout << "You drew: ";
+            showInitialHand(p1, p2);
+
+            // Calculate player’s total with option to set Ace value
+            int playerTotal = getCardValue(p1, "first") + getCardValue(p2, "second");
+            cout << "Your total: " << playerTotal << endl;
+
+            // Deal two cards to dealer (one hidden)
+            int d1 = rand() % 13 + 1;
+            int d2 = rand() % 13 + 1;
+            cout << "Dealer shows: ";
+            showCard(d1);
+            cout << "[Second card hidden]\n";
+
+            bool pBust = false, dBust = false; // Track if player or dealer busts
+
+            // === Player's Turn ===
+            char choice;
+            int newCard;
+            do {
+                // Ask player to hit or stand
+                cout << "Hit or stand? (h/s): ";
+                cin >> choice;
+                while (choice != HIT && choice != STAND) {
+                    cout << "Invalid choice. Enter 'h' or 's': ";
+                    cin >> choice;
+                }
+
+                // Handle player drawing a new card
+                if (choice == HIT) {
+                    newCard = rand() % 13 + 1;
+                    cout << "You drew a ";
+                    if (newCard == 1) {
+                        // Player chooses Ace value
+                        int val;
+                        cout << "Ace. Choose 1 or 11: ";
+                        do {
+                            cin >> val;
+                            if (val != MIN_ACE && val != MAX_ACE) {
+                                cout << "Invalid choice. Enter 1 or 11: ";
+                            }
+                        } while (val != MIN_ACE && val != MAX_ACE);
+                        newCard = val;
+                        cout << endl;
+                    } else if (newCard > 10) {
+                        // Show face card name and assign value 10
+                        switch (newCard) {
+                            case 11: cout << "Jack" << endl; break;
+                            case 12: cout << "Queen" << endl; break;
+                            case 13: cout << "King" << endl; break;
+                        }
+                        newCard = FACE_CARD_VALUE;
+                    } else {
+                        cout << newCard << endl;
+                    }
+                    playerTotal += newCard; // Update total
+                    cout << "New total: " << playerTotal << endl;
+                }
+            } while (choice == HIT && playerTotal < 21);
+
+            // Check if player busts
+            if (playerTotal > 21) pBust = true;
+
+            // === Dealer's Turn ===
+            vector<int> dealer = {d1, d2};
+            int dealerTotal = 0;
+
+            // Calculate initial total for dealer and convert Aces/face cards
+            for (int &card : dealer) {
+                if (card == 1) card = MAX_ACE;
+                else if (card > 10) card = FACE_CARD_VALUE;
+                dealerTotal += card;
+            }
+
+            // Dealer draws more cards until total >= 17 or max 5 cards
+            while (dealerTotal < 17 && dealer.size() < 5) {
+                int newD = rand() % 13 + 1;
+                if (newD == 1) newD = MAX_ACE;
+                else if (newD > 10) newD = FACE_CARD_VALUE;
+                dealer.push_back(newD);
+                dealerTotal += newD;
+
+                // Adjust Aces if dealer busts
+                int aceCount = 0;
+                for (int val : dealer) if (val == MAX_ACE) aceCount++;
+                while (dealerTotal > 21 && aceCount > 0) {
+                    dealerTotal -= 10;
+                    aceCount--;
+                }
+            }
+
+            // Check if dealer busts
+            if (dealerTotal > 21) dBust = true;
+
+            // Show all dealer cards
+            printDealerCards(dealer);
+            cout << "Dealer total: " << dealerTotal << endl;
+
+            // Determine and show result
+            string result = determineResult(playerTotal, dealerTotal, pBust, dBust);
+            cout << result << endl;
+            outFile << "Round " << r + 1 << ": " << result << "\n";
+
+            // Track player wins
+            if (result.find("Player wins") != string::npos) wins++;
+        }
+
+        // Show win statistics
+        float rate = static_cast<float>(wins) / total;
+        cout << "\n" << name << ", you won " << wins << " out of " << total << " games.\n";
+        cout << fixed << setprecision(2);
+        cout << "Win rate: " << rate * 100 << "%\n";
+        outFile << name << " won " << wins << " out of " << total << " rounds.\n";
+        outFile << "Win rate: " << rate * 100 << "%\n\n";
+
+        // Ask if user wants to play again
+        cout << "\nPlay another game? (y/n): ";
+        cin >> pAgain;
+        while (pAgain != PLAY_YES && pAgain != PLAY_NO) {
+            cout << "Invalid choice. Enter 'y' or 'n': ";
+            cin >> pAgain;
+        }
+        cin.ignore(); // Clear newline from buffer
+    }
+
+    outFile.close(); // Close file output
+    cout << "Thanks for playing, " << name << "! Goodbye.\n";
+    return 0;
+}
+
+// Draw two random cards
+void drawInitialCards(int &card1, int &card2) {
+    card1 = rand() % 13 + 1;
+    card2 = rand() % 13 + 1;
+}
+
+// Determine card value including Ace decision
+int getCardValue(int card, string cardPos) {
+    if (card == 1) {
+        int val;
+        cout << "You have an Ace as your " << cardPos << " card. Choose 1 or 11: ";
+        do {
+            cin >> val;
+            if (val != 1 && val != 11)
+                cout << "Invalid choice. Enter 1 or 11: ";
+        } while (val != 1 && val != 11);
+        return val;
+    } else if (card > 10) {
+        return 10;
+    } else return card;
+}
+
+// Show a single card by name
+void showCard(int card) {
+    switch (card) {
+        case 1: cout << "Ace\n"; break;
+        case 11: cout << "Jack\n"; break;
+        case 12: cout << "Queen\n"; break;
+        case 13: cout << "King\n"; break;
+        default: cout << card << endl;
+    }
+}
+
+// Display both cards drawn
+void showInitialHand(int c1, int c2) {
+    showCard(c1);
+    cout << " and ";
+    showCard(c2);
+}
+
+// Determine outcome string
+string determineResult(int pTot, int dTot, bool pBust, bool dBust) {
+    if (pBust) return "Dealer wins (you busted)!";
+    else if (dBust) return "Player wins (dealer busted)!";
+    else if (pTot > dTot) return "Player wins!";
+    else if (pTot < dTot) return "Dealer wins!";
+    else return "It's a tie!";
+}
+
+// Print dealer hand
+void printDealerCards(vector<int> dealer) {
+    cout << "Dealer's cards: ";
+    for (int val : dealer) {
+        if (val == 11) cout << "Ace ";
+        else cout << val << " ";
+    }
+    cout << endl;
+}
